@@ -1,8 +1,11 @@
+import RPi.GPIO as GPIO
+import time
+
 import face_recognition
 import cv2
 import numpy as np
-import time
 import pickle
+
 
 # Load pre-trained face encodings
 print("[INFO] loading encodings...")
@@ -10,6 +13,7 @@ with open("../encodings.pickle", "rb") as f:
     data = pickle.loads(f.read())
 known_face_encodings = data["encodings"]
 known_face_names = data["names"]
+print("[INFO] load encodings complete")
 
 # Initialize our variables
 cv_scaler = 1 # this has to be a whole number
@@ -20,6 +24,25 @@ face_names = []
 frame_count = 0
 start_time = time.time()
 fps = 0
+
+# Camera setup
+print("Camera opening...")
+# cv2.destroyAllWindows()
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+print("Camera ready")
+
+detected = False
+
+# Init states for GPIO pins
+GPIO.setmode(GPIO.BCM)
+
+button1_GPIO_pin = 26    # position follow on Raspberry Pi Pinout Mapping
+GPIO.setup(button1_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+button2_GPIO_pin = 5    # position follow on Raspberry Pi Pinout Mapping
+GPIO.setup(button2_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 def process_frame(frame):
     global face_locations, face_encodings, face_names
@@ -75,32 +98,24 @@ def draw_results(frame):
 
     return frame
 
-
-# By breaking the loop we run this code here which closes everything
-cv2.destroyAllWindows()
-
-cap = cv2.VideoCapture(0)
-
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-detected = False
-
-# New content of this file
-print("Camera opening")
-
-while True:
-    if not detected:
+# Function to process button 1 - Capture image and detect
+def button_1_processing():
+    
+    btn1_proc_str_time = time.time()
+    while time.time() - btn1_proc_str_time < 8:
+        print("Button 1 processing...")
+        
         # Capture frame from Camera
         ret, frame = cap.read()
         
         # Display the frame
         cv2.imshow('Video capture', frame)
-    
-    key = cv2.waitKey(1) & 0xFF
-    
-    if key == ord(' '): # Space key
-        if not detected:
+        
+        global detected
+        
+        if not detected:        
+            time.sleep(3)
+        
             capture_frame = frame
             
             # Clean up
@@ -123,11 +138,43 @@ while True:
             
             detected = True
         
-    elif key == ord('q'):
-        cv2.destroyAllWindows()
-        break
-        
-        
-        
-        
+        time.sleep(0.1)
+    
+    print("Stop button 1 processing")
+    return
 
+# Function to process button 2 - Read fingerprint sensor data and detect
+def button_2_processing():
+    btn2_proc_str_time = time.time()
+    while time.time() - btn2_proc_str_time < 5:
+        print("Button 2 processing...")
+        time.sleep(0.1)
+    
+    print("Stop button 2 processing")
+    return
+
+
+
+# Main process
+
+# Monitoring button state and process
+try:
+    while True:
+        btn1_sts = GPIO.input(button1_GPIO_pin)
+        btn2_sts = GPIO.input(button2_GPIO_pin)
+        
+        if not (btn1_sts == GPIO.HIGH):
+            print("Button 1 captured - processing...")
+            cv2.destroyAllWindows()
+            button_1_processing()
+            
+        if not (btn2_sts == GPIO.HIGH):
+            print("Button 2 captured - processing...")
+            cv2.destroyAllWindows()
+            button_2_processing()
+
+except KeyboardInterrupt:
+    print("Progam stopped!!!")
+    
+finally:
+    GPIO.cleanup()
