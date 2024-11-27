@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import pickle
 
+import fingerprint_handler
+
 
 # Load pre-trained face encodings
 print("[INFO] loading encodings...")
@@ -102,7 +104,7 @@ def draw_results(frame):
 def button_1_processing():
     
     btn1_proc_str_time = time.time()
-    while time.time() - btn1_proc_str_time < 8:
+    while time.time() - btn1_proc_str_time < 9:
         print("Button 1 processing...")
         
         # Capture frame from Camera
@@ -145,10 +147,14 @@ def button_1_processing():
 
 # Function to process button 2 - Read fingerprint sensor data and detect
 def button_2_processing():
+    fingerprint_info = {'id': 0, 'confidence': 0}
     btn2_proc_str_time = time.time()
-    while time.time() - btn2_proc_str_time < 5:
-        print("Button 2 processing...")
-        time.sleep(0.1)
+    
+    # while time.time() - btn2_proc_str_time < 5:
+    fingerprint_handler.find_fingerprint(fingerprint_info)
+    print(fingerprint_info)
+        
+        # time.sleep(0.1)
     
     print("Stop button 2 processing")
     return
