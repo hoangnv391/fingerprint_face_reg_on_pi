@@ -7,6 +7,7 @@ import numpy as np
 import pickle
 
 import fingerprint_handler
+from LCD import LCD
 
 
 # Load pre-trained face encodings
@@ -28,12 +29,12 @@ start_time = time.time()
 fps = 0
 
 # Camera setup
-print("Camera opening...")
+print("[INFO] Camera opening...")
 # cv2.destroyAllWindows()
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-print("Camera ready")
+print("[INFO] Camera ready")
 
 detected = False
 
@@ -45,6 +46,10 @@ GPIO.setup(button1_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 button2_GPIO_pin = 5    # position follow on Raspberry Pi Pinout Mapping
 GPIO.setup(button2_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+# Initialize the LCD with specific parameters: Raspberry Pi revision, I2C address, and backlight status
+# Using Raspberry Pi revision 2, I2C address 0x27, backlight enabled
+lcd = LCD(2, 0x27, True)
 
 def process_frame(frame, info):
     global face_locations, face_encodings, face_names
@@ -140,11 +145,20 @@ def button_1_processing():
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)    
             
             cv2.imshow('Detect result', display_frame)
-            print(face_info)
             
             detected = True
+            
+            print(face_info)
+            if (face_info['distance'] < 0.4) and (face_info['name'] == 'Hoang'): # threshold = 0.4 (0 - 1)
+                lcd.clear()
+                lcd.message("Nhan dien", 1)
+                lcd.message("   thanh cong", 2)
+            else:
+                lcd.clear()
+                lcd.message("Khong the", 1)
+                lcd.message("   nhan dien", 2)
         
-        time.sleep(0.1)
+        time.sleep(2)
     
     print("Stop button 1 processing")
     return
@@ -159,7 +173,15 @@ def button_2_processing():
     print(fingerprint_info)
         
         # time.sleep(0.1)
-    
+    if fingerprint_info['confidence'] > 20: # threshold = 20 (0 - 300)
+        lcd.clear()
+        lcd.message("Xac thuc", 1)
+        lcd.message("   thanh cong", 2)
+    else:
+        lcd.clear()
+        lcd.message("Xac thuc", 1)
+        lcd.message("   that bai", 2)
+    time.sleep(2)
     print("Stop button 2 processing")
     return
 
@@ -169,21 +191,39 @@ def button_2_processing():
 
 # Monitoring button state and process
 try:
+    print("[INFO] System ready")
+    lcd.clear()
+    lcd.message("[INFO]", 1)
+    lcd.message("System ready", 2)
+    time.sleep(1)
     while True:
+        
+        # Display message on the LCD
+        lcd.message("1. M.k khuon mat", 1)
+        lcd.message("2. M.k van tay", 2) 
+        
+        # Listen GPIO pins
         btn1_sts = GPIO.input(button1_GPIO_pin)
         btn2_sts = GPIO.input(button2_GPIO_pin)
         
         if not (btn1_sts == GPIO.HIGH):
             print("Button 1 captured - processing...")
+            lcd.clear()
+            lcd.message("Dang nhan dien", 1)
+            
             cv2.destroyAllWindows()
             button_1_processing()
             
         if not (btn2_sts == GPIO.HIGH):
             print("Button 2 captured - processing...")
+            lcd.clear()
+            lcd.message("Dang xac thuc", 2)
             cv2.destroyAllWindows()
             button_2_processing()
 
 except KeyboardInterrupt:
+    lcd.clear()
+    cv2.destroyAllWindows()
     print("Progam stopped!!!")
     
 finally:
