@@ -46,7 +46,7 @@ GPIO.setup(button1_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 button2_GPIO_pin = 5    # position follow on Raspberry Pi Pinout Mapping
 GPIO.setup(button2_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-def process_frame(frame):
+def process_frame(frame, info):
     global face_locations, face_encodings, face_names
 
     # Resize the frame using cv_scaler to increase performance (less pixels processed, less time spent)
@@ -78,6 +78,9 @@ def process_frame(frame):
         # print(matches)
         # print(best_match_index)
         # print(known_face_names)
+        
+    info['name'] = known_face_names[best_match_index]
+    info['distance'] = float(face_distances[best_match_index])
     
     return frame
 
@@ -102,7 +105,9 @@ def draw_results(frame):
 
 # Function to process button 1 - Capture image and detect
 def button_1_processing():
-    
+    global detected
+    detected = False
+    face_info = {'name': 'Unknown', 'distance': 1}
     btn1_proc_str_time = time.time()
     while time.time() - btn1_proc_str_time < 9:
         print("Button 1 processing...")
@@ -113,10 +118,8 @@ def button_1_processing():
         # Display the frame
         cv2.imshow('Video capture', frame)
         
-        global detected
-        
         if not detected:        
-            time.sleep(3)
+            time.sleep(4)
         
             capture_frame = frame
             
@@ -124,7 +127,7 @@ def button_1_processing():
             cv2.destroyAllWindows()
             
             # Process the frame with the function
-            processed_frame = process_frame(capture_frame)
+            processed_frame = process_frame(capture_frame, face_info)
             
             # Get the text and boxes to be drawn based on the processed frame
             display_frame = draw_results(processed_frame)
@@ -137,6 +140,7 @@ def button_1_processing():
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)    
             
             cv2.imshow('Detect result', display_frame)
+            print(face_info)
             
             detected = True
         
