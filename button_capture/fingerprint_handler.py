@@ -14,7 +14,8 @@ import adafruit_fingerprint
 #uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
 
 # If using with Linux/Raspberry Pi and hardware UART:
-uart = serial.Serial("/dev/ttyS0", baudrate=57600, timeout=1)
+uart = serial.Serial("/dev/ttyS0", baudrate=57600, timeout=5)
+# time.sleep(5)
 
 # If using with Linux/Raspberry Pi 3 with pi3-disable-bt
 # uart = serial.Serial("/dev/ttyAMA0", baudrate=57600, timeout=1)

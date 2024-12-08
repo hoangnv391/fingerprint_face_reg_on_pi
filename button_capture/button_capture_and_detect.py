@@ -1,3 +1,4 @@
+import serial
 import RPi.GPIO as GPIO
 import time
 
@@ -6,7 +7,7 @@ import cv2
 import numpy as np
 import pickle
 
-import fingerprint_handler
+# import fingerprint_handler
 from LCD import LCD
 
 
@@ -28,14 +29,6 @@ frame_count = 0
 start_time = time.time()
 fps = 0
 
-# Camera setup
-print("[INFO] Camera opening...")
-# cv2.destroyAllWindows()
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-print("[INFO] Camera ready")
-
 detected = False
 
 # Init states for GPIO pins
@@ -47,9 +40,25 @@ GPIO.setup(button1_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 button2_GPIO_pin = 5    # position follow on Raspberry Pi Pinout Mapping
 GPIO.setup(button2_GPIO_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
+relay_of_lock_pin = 23      # position follow on Raspberry Pi Pinout Mapping
+GPIO.setup(relay_of_lock_pin, GPIO.OUT)     # set GPIO pin is output
+GPIO.output(relay_of_lock_pin, GPIO.LOW)    # set the initial value, relay open, mean lock
+
+sticky_speaker_pin = 6      # position follow on Raspberry Pi Pinout Mapping
+GPIO.setup(sticky_speaker_pin, GPIO.OUT)     # set GPIO pin is output
+GPIO.output(sticky_speaker_pin, GPIO.LOW)    # set the initial value, relay open, mean lock
+
 # Initialize the LCD with specific parameters: Raspberry Pi revision, I2C address, and backlight status
 # Using Raspberry Pi revision 2, I2C address 0x27, backlight enabled
 lcd = LCD(2, 0x27, True)
+
+# Init serial port
+serial_port = '/dev/ttyS0'
+baud_rate = 9600
+
+ser = serial.Serial(serial_port, baud_rate)
+time.sleep(2) # waiting for serial port is ready
+
 
 def process_frame(frame, info):
     global face_locations, face_encodings, face_names
@@ -84,9 +93,13 @@ def process_frame(frame, info):
         # print(best_match_index)
         # print(known_face_names)
         
-    info['name'] = known_face_names[best_match_index]
-    info['distance'] = float(face_distances[best_match_index])
-    
+    try:
+        info['name'] = known_face_names[best_match_index]
+        info['distance'] = float(face_distances[best_match_index])
+    except:
+        info['name'] = 'Unknown'
+        info['distance'] = 1
+        
     return frame
 
 def draw_results(frame):
@@ -110,8 +123,17 @@ def draw_results(frame):
 
 # Function to process button 1 - Capture image and detect
 def button_1_processing():
+    # Camera setup
+    print("[INFO] Camera opening...")
+    # cv2.destroyAllWindows()
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    print("[INFO] Camera ready")
+    
     global detected
     detected = False
+    face_match = False
     face_info = {'name': 'Unknown', 'distance': 1}
     btn1_proc_str_time = time.time()
     while time.time() - btn1_proc_str_time < 9:
@@ -149,53 +171,57 @@ def button_1_processing():
             detected = True
             
             print(face_info)
-            if (face_info['distance'] < 0.4) and (face_info['name'] == 'Hoang'): # threshold = 0.4 (0 - 1)
-                lcd.clear()
-                lcd.message("Nhan dien", 1)
-                lcd.message("   thanh cong", 2)
+            if (face_info['distance'] < 0.6) and (face_info['name'] == 'Hoang'): # threshold = 0.4 (0 - 1)
+                face_match = True
             else:
-                lcd.clear()
-                lcd.message("Khong the", 1)
-                lcd.message("   nhan dien", 2)
-        
+                face_match = False
+
         time.sleep(2)
     
     print("Stop button 1 processing")
-    return
+    cap.release()
+    return face_match
 
 # Function to process button 2 - Read fingerprint sensor data and detect
 def button_2_processing():
-    fingerprint_info = {'id': 0, 'confidence': 0}
-    btn2_proc_str_time = time.time()
-    
-    # while time.time() - btn2_proc_str_time < 5:
-    fingerprint_handler.find_fingerprint(fingerprint_info)
-    print(fingerprint_info)
-        
-        # time.sleep(0.1)
-    if fingerprint_info['confidence'] > 20: # threshold = 20 (0 - 300)
-        lcd.clear()
-        lcd.message("Xac thuc", 1)
-        lcd.message("   thanh cong", 2)
+    fingerprint_match = False
+    btn2_proc_start_time = time.time()
+    finger_info = {"id": 0, "confidence": 0}
+
+    while time.time() - btn2_proc_start_time < 5:
+        if (ser.in_waiting > 0):
+            finger_info["id"] = 0
+            finger_info["confidence"] = 0
+            line = ser.readline().decode('utf-8').rstrip()
+            uart_received_info = line.split(":")
+            finger_info["id"] = int(uart_received_info[0])
+            finger_info["confidence"] = int(uart_received_info[1])
+            print(finger_info)
+            
+    if (int(finger_info["confidence"]) > 0):
+        fingerprint_match = True
     else:
-        lcd.clear()
-        lcd.message("Xac thuc", 1)
-        lcd.message("   that bai", 2)
-    time.sleep(2)
+        fingerprint_match = False
+            
     print("Stop button 2 processing")
-    return
-
-
+    return fingerprint_match
+    
+    
 
 # Main process
 
 # Monitoring button state and process
 try:
     print("[INFO] System ready")
+    
     lcd.clear()
     lcd.message("[INFO]", 1)
     lcd.message("System ready", 2)
     time.sleep(1)
+    
+    face_detected = False
+    fingerprint_detected = False
+    
     while True:
         
         # Display message on the LCD
@@ -206,20 +232,108 @@ try:
         btn1_sts = GPIO.input(button1_GPIO_pin)
         btn2_sts = GPIO.input(button2_GPIO_pin)
         
+        face_detected = False
+        fingerprint_detected = False
+        
         if not (btn1_sts == GPIO.HIGH):
             print("Button 1 captured - processing...")
+            cv2.destroyAllWindows()
+            
             lcd.clear()
             lcd.message("Dang nhan dien", 1)
+            lcd.message("   khuon mat", 2)
+            # time.sleep(2)
             
-            cv2.destroyAllWindows()
-            button_1_processing()
+            face_detected = button_1_processing()
             
-        if not (btn2_sts == GPIO.HIGH):
+            if face_detected:
+                lcd.clear()
+                lcd.message("Nhan dien", 1)
+                lcd.message("   thanh cong", 2)
+                
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                
+                GPIO.output(relay_of_lock_pin, GPIO.HIGH)
+                time.sleep(5)
+                GPIO.output(relay_of_lock_pin, GPIO.LOW)
+                
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                
+            else:
+                lcd.clear()
+                lcd.message("Nhan dien", 1)
+                lcd.message("   that bai", 2)
+                
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                
+        elif not (btn2_sts == GPIO.HIGH):
             print("Button 2 captured - processing...")
-            lcd.clear()
-            lcd.message("Dang xac thuc", 2)
             cv2.destroyAllWindows()
-            button_2_processing()
+            
+            lcd.clear()
+            lcd.message("Dang xac thuc", 1)
+            lcd.message("   van tay", 2)
+            # time.sleep(2)
+            
+            fingerprint_detected = button_2_processing()
+            
+            if fingerprint_detected:
+                lcd.clear()
+                lcd.message("Xac thuc", 1)
+                lcd.message("   thanh cong", 2)
+                
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                
+                GPIO.output(relay_of_lock_pin, GPIO.HIGH)
+                time.sleep(5)
+                GPIO.output(relay_of_lock_pin, GPIO.LOW)
+                
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                
+            else:
+                lcd.clear()
+                lcd.message("Xac thuc", 1)
+                lcd.message("   that bai", 2)
+                
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.HIGH)
+                time.sleep(0.2)
+                GPIO.output(sticky_speaker_pin, GPIO.LOW)
+        else:
+            pass    # do nothing
 
 except KeyboardInterrupt:
     lcd.clear()
