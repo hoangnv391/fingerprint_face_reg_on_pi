@@ -77,7 +77,6 @@ def process_frame(frame, info):
     for face_encoding in face_encodings:
         # See if the face is a match for the known face(s)
         matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
-        name = "Unknown"
 
         # Use the known face with the smallest distance to the new face
         face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
@@ -85,6 +84,10 @@ def process_frame(frame, info):
         
         if matches[best_match_index]:
             name = known_face_names[best_match_index]
+            info[str(name)] = float(face_distances[best_match_index])
+        else:
+            name = "Unknown"
+            info[name] = 1.0
             
         face_names.append(name)
             
@@ -93,13 +96,14 @@ def process_frame(frame, info):
         # print(best_match_index)
         # print(known_face_names)
         
-    try:
-        info['name'] = known_face_names[best_match_index]
-        info['distance'] = float(face_distances[best_match_index])
-    except:
-        info['name'] = 'Unknown'
-        info['distance'] = 1
-        
+#     try:
+#         info['name'] = known_face_names[best_match_index]
+#         info['distance'] = float(face_distances[best_match_index])
+#     except:
+#         info['name'] = 'Unknown'
+#         info['distance'] = 1
+
+    print(info)
     return frame
 
 def draw_results(frame):
@@ -130,14 +134,16 @@ def button_1_processing():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     print("[INFO] Camera ready")
+    print("Button 1 processing...")
     
     global detected
     detected = False
     face_match = False
+    # face_info = {'name': 'Unknown', 'distance': 1}
     face_info = {'name': 'Unknown', 'distance': 1}
     btn1_proc_str_time = time.time()
     while time.time() - btn1_proc_str_time < 9:
-        print("Button 1 processing...")
+        
         
         # Capture frame from Camera
         ret, frame = cap.read()
@@ -171,7 +177,7 @@ def button_1_processing():
             detected = True
             
             print(face_info)
-            if (face_info['distance'] < 0.6) and (face_info['name'] == 'Hoang'): # threshold = 0.4 (0 - 1)
+            if (float(face_info['Hoang']) < 0.6): # threshold = 0.6 (0 - 1)
                 face_match = True
             else:
                 face_match = False
@@ -285,6 +291,8 @@ try:
                 GPIO.output(sticky_speaker_pin, GPIO.LOW)
                 
         elif not (btn2_sts == GPIO.HIGH):
+            ser.flushInput()
+            ser.flushOutput()
             print("Button 2 captured - processing...")
             cv2.destroyAllWindows()
             
@@ -332,9 +340,13 @@ try:
                 GPIO.output(sticky_speaker_pin, GPIO.HIGH)
                 time.sleep(0.2)
                 GPIO.output(sticky_speaker_pin, GPIO.LOW)
+                
+            ser.flushInput()
+            ser.flushOutput()
+            
         else:
             pass    # do nothing
-
+        
 except KeyboardInterrupt:
     lcd.clear()
     cv2.destroyAllWindows()

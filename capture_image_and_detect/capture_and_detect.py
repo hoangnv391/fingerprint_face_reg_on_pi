@@ -49,10 +49,10 @@ def process_frame(frame):
             
         face_names.append(name)
             
-        # print(face_distances)
-        # print(matches)
-        # print(best_match_index)
-        # print(known_face_names)
+        print(face_distances)
+        print(matches)
+        print(best_match_index)
+        print(known_face_names)
     
     return frame
 
